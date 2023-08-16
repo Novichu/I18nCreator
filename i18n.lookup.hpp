@@ -43,6 +43,7 @@ bool LookUp::setLocale(std::string locale,std::string file,FileType type)
     if(!rd.is_open()) return false;
     locale_ = std::move(locale);
     type_ = type;
+    if(type_==FileType::ft_unkwon ) type_ = FileType::ft_ini;
     data_.clear();
     std::string line;
     while (std::getline(rd,line)) {
@@ -51,15 +52,37 @@ bool LookUp::setLocale(std::string locale,std::string file,FileType type)
             type_ = FileType::ft_json;
             continue;
         }
-        std::string key,value;
-        bool if_key = true;
-        for (int var = 0; var < line.size() ; ++var) {
-
+        if(line.empty()) continue;
+        int32_t n = static_cast<int32_t>(line.size());
+        std::string key,value,temp;
+        bool if_find_key_end;
+        for (int right = 0; right < n; ++right) {
+            if(!if_find_key_end && right < n && ((type_ == FileType::ft_json &&  line[right]==':') ||
+                                                  (type_ == FileType::ft_ini &&  line[right]=='='))
+                )
+            {
+                if_find_key_end = true;
+                key.swap(temp);
+                continue;
+            }
+            if(line[right] == '\\' && right+ 1 < n)
+            {      right++;
+                switch (line[right]) {
+                case 'n': temp += '\n'; break;
+                case 't': temp += '\t'; break;
+                case 'r': temp += '\r'; break;
+                case '"': temp += '"'; break;
+                default: temp += line[right];break;
+                }
+                continue;
+            }
+            if(line[right]!='"')temp += line[right];
         }
+        value.swap(temp);
         if(key.size()&&value.size()) data_[key] = std::move(value);
     }
     rd.close();
-    return true;
+    return data_.size();
 }
 std::string LookUp::lookup(std::string text)
 {
@@ -73,7 +96,7 @@ bool SaveUp::addtext(std::string label, std::string text){
 
 }
 bool SaveUp::syncSave(std::string locale,std::string file,FileType type){
-    std::ifstream rd;
+    std::ofstream rd;
     rd.open(file);
     if(!rd.is_open()) return false;
     locale_ = std::move(locale);
@@ -81,14 +104,21 @@ bool SaveUp::syncSave(std::string locale,std::string file,FileType type){
     switch (type) {
     case FileType::ft_json:
         type_ = FileType::ft_json;
+        rd << "{" << std::endl;
+        for (auto &&[key,value] : data_) {
+            rd << "\"" << key <<"\":\""<< value << "\""<< std::endl;
+        }
+        rd << "}" << std::endl;
         break;
     default:
         type_ = FileType::ft_ini;
+        for (auto &&[key,value] : data_) {
+            rd << key <<"="<< value << std::endl;
+        }
         break;
     }
-
     rd.close();
-    return  true;
+    return data_.size();
 }
 
 }
